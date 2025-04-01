@@ -15,7 +15,6 @@ function broadcastUserList(room) {
   const userList = [];
 
   clients.forEach(ws => {
-    // Geçersiz bağlantı varsa temizle
     if (ws.readyState !== WebSocket.OPEN) {
       clients.delete(ws);
       return;
@@ -51,6 +50,7 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    // Odaya katılma
     if (msg.type === 'join') {
       ws.userData.username = msg.username;
       ws.userData.room = msg.room;
@@ -61,11 +61,11 @@ wss.on('connection', (ws) => {
         ws.send(JSON.stringify(m));
       });
 
-      // Kullanıcı listesi gönder
       broadcastUserList(msg.room);
       return;
     }
 
+    // Yeni mesaj gönderme
     if (msg.type === 'message') {
       const messageObj = {
         username: msg.username,
@@ -73,13 +73,11 @@ wss.on('connection', (ws) => {
         message: msg.message
       };
 
-      // Oda geçmişine ekle
       if (!roomMessages.has(msg.room)) {
         roomMessages.set(msg.room, []);
       }
       roomMessages.get(msg.room).push(messageObj);
 
-      // Mesajı o odadaki herkese gönder
       clients.forEach(client => {
         if (
           client.readyState === WebSocket.OPEN &&
@@ -88,6 +86,35 @@ wss.on('connection', (ws) => {
           client.send(JSON.stringify(messageObj));
         }
       });
+      return;
+    }
+
+    // Sadece kendi mesajlarını silme
+    if (msg.type === 'deleteOwnMessages') {
+      const room = msg.room;
+      const username = msg.username;
+
+      if (roomMessages.has(room)) {
+        const filtered = roomMessages.get(room).filter(m => m.username !== username);
+        roomMessages.set(room, filtered);
+      }
+
+      // Tüm kullanıcılara önce temizleme bildirimi
+      clients.forEach(client => {
+        if (
+          client.readyState === WebSocket.OPEN &&
+          client.userData.room === room
+        ) {
+          client.send(JSON.stringify({ type: 'cleared', room }));
+
+          // Güncel mesajları yeniden gönder
+          roomMessages.get(room).forEach(m => {
+            client.send(JSON.stringify(m));
+          });
+        }
+      });
+
+      return;
     }
   });
 
