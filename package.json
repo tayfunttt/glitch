@@ -1,11 +1,14 @@
 {
-  "name": "p2p-chat-server",
+  "name": "chat-server",
   "version": "1.0.0",
+  "description": "WebSocket tabanlı gerçek zamanlı chat uygulaması",
   "main": "server.js",
-  "dependencies": {
-    "ws": "^8.0.0"
-  },
   "scripts": {
     "start": "node server.js"
+  },
+  "author": "SeninAdın",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.0.0"
   }
 }
