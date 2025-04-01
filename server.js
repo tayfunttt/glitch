@@ -31,7 +31,7 @@ wss.on('connection', (ws) => {
       case 'signal':
         const roomClients = rooms[roomId] || [];
         roomClients.forEach(client => {
-          if (client !== ws && client.readyState === WebSocket.OPEN) {
+          if (client.readyState === WebSocket.OPEN) {
             client.send(JSON.stringify({
               type: 'signal',
               payload
@@ -53,7 +53,8 @@ wss.on('connection', (ws) => {
   });
 });
 
+// 👇 Bu satır Render için kritik — dışa açık IP ile dinleme yapılmalı
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`Signaling server is running on port ${PORT}`);
 });
