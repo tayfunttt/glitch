@@ -2,9 +2,10 @@
 const WebSocket = require('ws');
 const axios = require('axios');
 
+// Kullanıcı bağlantıları ve veri saklama
 const clients = new Set();
-const roomMessages = new Map();
-const oneSignalUsers = new Map();
+const roomMessages = new Map(); // { oda: [mesaj1, mesaj2, ...] }
+const oneSignalUsers = new Map(); // { username: oneSignalId }
 
 const server = http.createServer((req, res) => {
   res.writeHead(200);
@@ -47,7 +48,7 @@ function sendPushNotification(oneSignalId, message) {
     contents: { tr: message, en: message }
   }, {
     headers: {
-      'Authorization': 'Basic YOUR_REST_API_KEY_HERE',
+      'Authorization': 'os_v2_app_3eb5iyba2janjpk6ncxytsniuxgctctafseueknsfomt446yarpwwughtqjf5ncrnydvuxpkk5jv3u5bvt47sb45qqevyoihpg2ielq', // 👈 REST API KEY’ini buraya yaz
       'Content-Type': 'application/json'
     }
   }).then(() => {
@@ -69,11 +70,14 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    // OneSignal ID kaydı
     if (msg.type === 'registerPush') {
       oneSignalUsers.set(msg.username, msg.oneSignalId);
+      console.log(`🟢 OneSignal ID kaydedildi: ${msg.username} = ${msg.oneSignalId}`);
       return;
     }
 
+    // Odaya katılma
     if (msg.type === 'join') {
       ws.userData.username = msg.username;
       ws.userData.room = msg.room;
@@ -87,6 +91,7 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    // Yeni mesaj gönderildi
     if (msg.type === 'message') {
       const messageObj = {
         username: msg.username,
@@ -104,14 +109,14 @@ wss.on('connection', (ws) => {
       clients.forEach(client => {
         if (
           client.readyState === WebSocket.OPEN &&
-          client.userData.room === msg.room &&
-          client.userData.username !== msg.username
+          client.userData.room === msg.room
         ) {
           client.send(JSON.stringify(messageObj));
           delivered = true;
         }
       });
 
+      // Eğer mesaj kimseye ulaşmadıysa → push bildirimi gönder
       if (!delivered) {
         oneSignalUsers.forEach((oneSignalId, username) => {
           if (username !== msg.username) {
@@ -123,6 +128,7 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    // Kendi mesajlarını silme
     if (msg.type === 'deleteOwnMessages') {
       const room = msg.room;
       const username = msg.username;
