@@ -2,7 +2,7 @@
 const WebSocket = require('ws');
 
 const clients = new Set();
-const roomMessages = new Map(); // { oda_adi: [mesaj1, mesaj2, ...] }
+const roomMessages = new Map(); // { oda: [mesaj1, mesaj2, ...] }
 
 const server = http.createServer((req, res) => {
   res.writeHead(200);
@@ -10,6 +10,31 @@ const server = http.createServer((req, res) => {
 });
 
 const wss = new WebSocket.Server({ server });
+
+function getUsersInRoom(room) {
+  const users = [];
+  clients.forEach(ws => {
+    if (ws.readyState === WebSocket.OPEN && ws.userData.room === room) {
+      users.push(ws.userData.username);
+    }
+  });
+  return users;
+}
+
+function broadcastUserList(room) {
+  const userList = getUsersInRoom(room);
+  const message = JSON.stringify({
+    type: 'userList',
+    users: userList,
+    room
+  });
+
+  clients.forEach(ws => {
+    if (ws.readyState === WebSocket.OPEN && ws.userData.room === room) {
+      ws.send(message);
+    }
+  });
+}
 
 wss.on('connection', (ws) => {
   ws.userData = { username: null, room: null };
@@ -23,21 +48,20 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    // Kullanıcı odaya katıldıysa
     if (msg.type === 'join') {
       ws.userData.username = msg.username;
       ws.userData.room = msg.room;
 
-      // Odanın geçmişini gönder
+      // Eski mesajları gönder
       const history = roomMessages.get(msg.room) || [];
-      history.forEach((oldMsg) => {
-        ws.send(JSON.stringify(oldMsg));
+      history.forEach(m => {
+        ws.send(JSON.stringify(m));
       });
 
+      broadcastUserList(msg.room);
       return;
     }
 
-    // Mesaj gönderildiyse
     if (msg.type === 'message') {
       const messageObj = {
         username: msg.username,
@@ -45,13 +69,11 @@ wss.on('connection', (ws) => {
         message: msg.message
       };
 
-      // Oda geçmişine ekle
       if (!roomMessages.has(msg.room)) {
         roomMessages.set(msg.room, []);
       }
       roomMessages.get(msg.room).push(messageObj);
 
-      // O odadaki herkese gönder
       clients.forEach(client => {
         if (
           client.readyState === WebSocket.OPEN &&
@@ -64,7 +86,11 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
+    const room = ws.userData.room;
     clients.delete(ws);
+    if (room) {
+      broadcastUserList(room);
+    }
   });
 });
 
