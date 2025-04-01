@@ -1,0 +1,18 @@
+{
+  "user123": {
+    "endpoint": "https://fcm.googleapis.com/fcm/send/abcd1234...",
+    "expirationTime": null,
+    "keys": {
+      "p256dh": "BLABLAKODU",
+      "auth": "ABCD1234"
+    }
+  },
+  "user456": {
+    "endpoint": "https://fcm.googleapis.com/fcm/send/xyz987...",
+    "expirationTime": null,
+    "keys": {
+      "p256dh": "XYZXYZKODU",
+      "auth": "XYZ9876"
+    }
+  }
+}
