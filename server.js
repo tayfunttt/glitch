@@ -1,7 +1,8 @@
 ﻿const http = require('http');
 const WebSocket = require('ws');
 
-const clients = new Set();
+const clients = new Map(); // { username: ws }
+const messageQueue = new Map(); // { username: [mesaj1, mesaj2, ...] }
 
 const server = http.createServer((req, res) => {
   res.writeHead(200);
@@ -12,7 +13,6 @@ const wss = new WebSocket.Server({ server });
 
 wss.on('connection', (ws) => {
   ws.userData = { username: null, room: null };
-  clients.add(ws);
 
   ws.on('message', (data) => {
     let msg;
@@ -25,27 +25,56 @@ wss.on('connection', (ws) => {
     if (msg.type === 'join') {
       ws.userData.username = msg.username;
       ws.userData.room = msg.room;
+      clients.set(msg.username, ws); // Kullanıcı online
+
+      // Kuyruktaki mesajları gönder
+      const queued = messageQueue.get(msg.username) || [];
+      queued.forEach(queuedMsg => {
+        ws.send(JSON.stringify(queuedMsg));
+      });
+      messageQueue.delete(msg.username); // Mesajlar gösterildi, kuyruk temizlendi
       return;
     }
 
     if (msg.type === 'message') {
-      clients.forEach(client => {
+      // Aynı odadaki kullanıcılara mesajı gönder
+      wss.clients.forEach(client => {
         if (
           client.readyState === WebSocket.OPEN &&
-          client.userData.room === ws.userData.room
+          client.userData.room === ws.userData.room &&
+          client.userData.username !== msg.username
         ) {
           client.send(JSON.stringify({
-            username: ws.userData.username,
-            room: ws.userData.room,
+            username: msg.username,
+            room: msg.room,
             message: msg.message
           }));
+        }
+      });
+
+      // Odaya bağlı olmayan kullanıcılar için mesajı kuyrukla
+      clients.forEach((clientWS, otherUsername) => {
+        if (
+          otherUsername !== msg.username && // kendine gönderme
+          (!clientWS || clientWS.readyState !== WebSocket.OPEN || clientWS.userData.room !== msg.room)
+        ) {
+          const pending = messageQueue.get(otherUsername) || [];
+          pending.push({
+            username: msg.username,
+            room: msg.room,
+            message: msg.message
+          });
+          messageQueue.set(otherUsername, pending);
         }
       });
     }
   });
 
   ws.on('close', () => {
-    clients.delete(ws);
+    const username = ws.userData.username;
+    if (username && clients.get(username) === ws) {
+      clients.delete(username);
+    }
   });
 });
 
