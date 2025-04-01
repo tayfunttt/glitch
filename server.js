@@ -3,8 +3,8 @@ const WebSocket = require('ws');
 const axios = require('axios');
 
 const clients = new Set();
-const roomMessages = new Map(); // { oda: [mesaj1, mesaj2, ...] }
-const oneSignalUsers = new Map(); // { username: oneSignalId }
+const roomMessages = new Map();
+const oneSignalUsers = new Map();
 
 const server = http.createServer((req, res) => {
   res.writeHead(200);
@@ -47,7 +47,7 @@ function sendPushNotification(oneSignalId, message) {
     contents: { tr: message, en: message }
   }, {
     headers: {
-      'Authorization': 'Basic YOUR_REST_API_KEY_HERE', // 🛑 BURAYA REST API KEY'İNİ YAZ
+      'Authorization': 'Basic YOUR_REST_API_KEY_HERE',
       'Content-Type': 'application/json'
     }
   }).then(() => {
@@ -69,18 +69,15 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    // Kullanıcının OneSignal ID'sini kaydet
     if (msg.type === 'registerPush') {
       oneSignalUsers.set(msg.username, msg.oneSignalId);
       return;
     }
 
-    // Kullanıcı odaya katıldıysa
     if (msg.type === 'join') {
       ws.userData.username = msg.username;
       ws.userData.room = msg.room;
 
-      // Eski mesajları gönder
       const history = roomMessages.get(msg.room) || [];
       history.forEach(m => {
         ws.send(JSON.stringify(m));
@@ -90,7 +87,6 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    // Yeni mesaj gönderildi
     if (msg.type === 'message') {
       const messageObj = {
         username: msg.username,
@@ -116,7 +112,6 @@ wss.on('connection', (ws) => {
         }
       });
 
-      // Kimseye ulaşmadıysa push bildirimi gönder
       if (!delivered) {
         oneSignalUsers.forEach((oneSignalId, username) => {
           if (username !== msg.username) {
@@ -128,7 +123,6 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    // Kendi mesajlarını silme
     if (msg.type === 'deleteOwnMessages') {
       const room = msg.room;
       const username = msg.username;
@@ -144,7 +138,6 @@ wss.on('connection', (ws) => {
           client.userData.room === room
         ) {
           client.send(JSON.stringify({ type: 'cleared', room }));
-
           roomMessages.get(room).forEach(m => {
             client.send(JSON.stringify(m));
           });

@@ -9,6 +9,7 @@
   "author": "SeninAdın",
   "license": "MIT",
   "dependencies": {
+    "axios": "^1.8.4",
     "ws": "^8.0.0"
   }
 }
