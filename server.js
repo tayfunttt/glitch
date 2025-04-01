@@ -1,8 +1,8 @@
 ﻿const http = require('http');
 const WebSocket = require('ws');
 
-const clients = new Map(); // { username: ws }
-const messageQueue = new Map(); // { username: [mesaj1, mesaj2, ...] }
+const clients = new Set();
+const roomMessages = new Map(); // { oda_adi: [mesaj1, mesaj2, ...] }
 
 const server = http.createServer((req, res) => {
   res.writeHead(200);
@@ -13,6 +13,7 @@ const wss = new WebSocket.Server({ server });
 
 wss.on('connection', (ws) => {
   ws.userData = { username: null, room: null };
+  clients.add(ws);
 
   ws.on('message', (data) => {
     let msg;
@@ -22,59 +23,48 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    // Kullanıcı odaya katıldıysa
     if (msg.type === 'join') {
       ws.userData.username = msg.username;
       ws.userData.room = msg.room;
-      clients.set(msg.username, ws); // Kullanıcı online
 
-      // Kuyruktaki mesajları gönder
-      const queued = messageQueue.get(msg.username) || [];
-      queued.forEach(queuedMsg => {
-        ws.send(JSON.stringify(queuedMsg));
+      // Odanın geçmişini gönder
+      const history = roomMessages.get(msg.room) || [];
+      history.forEach((oldMsg) => {
+        ws.send(JSON.stringify(oldMsg));
       });
-      messageQueue.delete(msg.username); // Mesajlar gösterildi, kuyruk temizlendi
+
       return;
     }
 
+    // Mesaj gönderildiyse
     if (msg.type === 'message') {
-      // Aynı odadaki kullanıcılara mesajı gönder
-      wss.clients.forEach(client => {
+      const messageObj = {
+        username: msg.username,
+        room: msg.room,
+        message: msg.message
+      };
+
+      // Oda geçmişine ekle
+      if (!roomMessages.has(msg.room)) {
+        roomMessages.set(msg.room, []);
+      }
+      roomMessages.get(msg.room).push(messageObj);
+
+      // O odadaki herkese gönder
+      clients.forEach(client => {
         if (
           client.readyState === WebSocket.OPEN &&
-          client.userData.room === ws.userData.room &&
-          client.userData.username !== msg.username
+          client.userData.room === msg.room
         ) {
-          client.send(JSON.stringify({
-            username: msg.username,
-            room: msg.room,
-            message: msg.message
-          }));
-        }
-      });
-
-      // Odaya bağlı olmayan kullanıcılar için mesajı kuyrukla
-      clients.forEach((clientWS, otherUsername) => {
-        if (
-          otherUsername !== msg.username && // kendine gönderme
-          (!clientWS || clientWS.readyState !== WebSocket.OPEN || clientWS.userData.room !== msg.room)
-        ) {
-          const pending = messageQueue.get(otherUsername) || [];
-          pending.push({
-            username: msg.username,
-            room: msg.room,
-            message: msg.message
-          });
-          messageQueue.set(otherUsername, pending);
+          client.send(JSON.stringify(messageObj));
         }
       });
     }
   });
 
   ws.on('close', () => {
-    const username = ws.userData.username;
-    if (username && clients.get(username) === ws) {
-      clients.delete(username);
-    }
+    clients.delete(ws);
   });
 });
 
