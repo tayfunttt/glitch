@@ -2,7 +2,6 @@
 const WebSocket = require('ws');
 const axios = require('axios');
 
-// Kullanıcı bağlantıları ve veri saklama
 const clients = new Set();
 const roomMessages = new Map(); // { oda: [mesaj1, mesaj2, ...] }
 const oneSignalUsers = new Map(); // { username: oneSignalId }
@@ -48,7 +47,7 @@ function sendPushNotification(oneSignalId, message) {
     contents: { tr: message, en: message }
   }, {
     headers: {
-      'Authorization': 'os_v2_app_3eb5iyba2janjpk6ncxytsniuxgctctafseueknsfomt446yarpwwughtqjf5ncrnydvuxpkk5jv3u5bvt47sb45qqevyoihpg2ielq', // 👈 REST API KEY’ini buraya yaz
+      'Authorization': 'Basic os_v2_app_3eb5iyba2janjpk6ncxytsniuxgctctafseueknsfomt446yarpwwughtqjf5ncrnydvuxpkk5jv3u5bvt47sb45qqevyoihpg2ielq',
       'Content-Type': 'application/json'
     }
   }).then(() => {
@@ -70,14 +69,12 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    // OneSignal ID kaydı
     if (msg.type === 'registerPush') {
       oneSignalUsers.set(msg.username, msg.oneSignalId);
       console.log(`🟢 OneSignal ID kaydedildi: ${msg.username} = ${msg.oneSignalId}`);
       return;
     }
 
-    // Odaya katılma
     if (msg.type === 'join') {
       ws.userData.username = msg.username;
       ws.userData.room = msg.room;
@@ -91,7 +88,6 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    // Yeni mesaj gönderildi
     if (msg.type === 'message') {
       const messageObj = {
         username: msg.username,
@@ -105,6 +101,7 @@ wss.on('connection', (ws) => {
       roomMessages.get(msg.room).push(messageObj);
 
       let delivered = false;
+      const deliveredUsers = new Set();
 
       clients.forEach(client => {
         if (
@@ -112,23 +109,25 @@ wss.on('connection', (ws) => {
           client.userData.room === msg.room
         ) {
           client.send(JSON.stringify(messageObj));
+          deliveredUsers.add(client.userData.username);
           delivered = true;
         }
       });
 
-      // Eğer mesaj kimseye ulaşmadıysa → push bildirimi gönder
-      if (!delivered) {
-        oneSignalUsers.forEach((oneSignalId, username) => {
-          if (username !== msg.username) {
-            sendPushNotification(oneSignalId, `${msg.username} size mesaj gönderdi`);
-          }
-        });
-      }
+      // ❗Push sadece odadaki offline kullanıcılar için
+      oneSignalUsers.forEach((oneSignalId, username) => {
+        if (
+          username !== msg.username &&
+          !deliveredUsers.has(username)
+        ) {
+          console.log(`📬 Push gönderiliyor → ${username}`);
+          sendPushNotification(oneSignalId, `${msg.username} size mesaj gönderdi`);
+        }
+      });
 
       return;
     }
 
-    // Kendi mesajlarını silme
     if (msg.type === 'deleteOwnMessages') {
       const room = msg.room;
       const username = msg.username;
