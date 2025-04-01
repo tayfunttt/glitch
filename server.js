@@ -1,8 +1,10 @@
 ﻿const http = require('http');
 const WebSocket = require('ws');
+const axios = require('axios');
 
 const clients = new Set();
 const roomMessages = new Map(); // { oda: [mesaj1, mesaj2, ...] }
+const oneSignalUsers = new Map(); // { username: oneSignalId }
 
 const server = http.createServer((req, res) => {
   res.writeHead(200);
@@ -38,6 +40,23 @@ function broadcastUserList(room) {
   });
 }
 
+function sendPushNotification(oneSignalId, message) {
+  axios.post('https://onesignal.com/api/v1/notifications', {
+    app_id: 'd903d460-20d2-40d4-bd5e-68af89c9a8a5',
+    include_player_ids: [oneSignalId],
+    contents: { tr: message, en: message }
+  }, {
+    headers: {
+      'Authorization': 'Basic YOUR_REST_API_KEY_HERE', // 🛑 BURAYA REST API KEY'İNİ YAZ
+      'Content-Type': 'application/json'
+    }
+  }).then(() => {
+    console.log('🔔 Push bildirimi gönderildi:', message);
+  }).catch(err => {
+    console.error('❌ Push gönderim hatası:', err.message);
+  });
+}
+
 wss.on('connection', (ws) => {
   ws.userData = { username: null, room: null };
   clients.add(ws);
@@ -50,7 +69,13 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    // Odaya katılma
+    // Kullanıcının OneSignal ID'sini kaydet
+    if (msg.type === 'registerPush') {
+      oneSignalUsers.set(msg.username, msg.oneSignalId);
+      return;
+    }
+
+    // Kullanıcı odaya katıldıysa
     if (msg.type === 'join') {
       ws.userData.username = msg.username;
       ws.userData.room = msg.room;
@@ -65,7 +90,7 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    // Yeni mesaj gönderme
+    // Yeni mesaj gönderildi
     if (msg.type === 'message') {
       const messageObj = {
         username: msg.username,
@@ -78,18 +103,32 @@ wss.on('connection', (ws) => {
       }
       roomMessages.get(msg.room).push(messageObj);
 
+      let delivered = false;
+
       clients.forEach(client => {
         if (
           client.readyState === WebSocket.OPEN &&
-          client.userData.room === msg.room
+          client.userData.room === msg.room &&
+          client.userData.username !== msg.username
         ) {
           client.send(JSON.stringify(messageObj));
+          delivered = true;
         }
       });
+
+      // Kimseye ulaşmadıysa push bildirimi gönder
+      if (!delivered) {
+        oneSignalUsers.forEach((oneSignalId, username) => {
+          if (username !== msg.username) {
+            sendPushNotification(oneSignalId, `${msg.username} size mesaj gönderdi`);
+          }
+        });
+      }
+
       return;
     }
 
-    // Sadece kendi mesajlarını silme
+    // Kendi mesajlarını silme
     if (msg.type === 'deleteOwnMessages') {
       const room = msg.room;
       const username = msg.username;
@@ -99,7 +138,6 @@ wss.on('connection', (ws) => {
         roomMessages.set(room, filtered);
       }
 
-      // Tüm kullanıcılara önce temizleme bildirimi
       clients.forEach(client => {
         if (
           client.readyState === WebSocket.OPEN &&
@@ -107,7 +145,6 @@ wss.on('connection', (ws) => {
         ) {
           client.send(JSON.stringify({ type: 'cleared', room }));
 
-          // Güncel mesajları yeniden gönder
           roomMessages.get(room).forEach(m => {
             client.send(JSON.stringify(m));
           });
@@ -128,5 +165,5 @@ wss.on('connection', (ws) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`WebSocket sunucusu ${PORT} portunda çalışıyor`);
+  console.log(`✅ WebSocket sunucusu ${PORT} portunda çalışıyor`);
 });
