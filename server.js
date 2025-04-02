@@ -65,9 +65,7 @@ wss.on("connection", (ws) => {
       roomMessages.get(msg.room).push(messageObj);
       broadcast(msg.room, messageObj);
 
-      // GPT tetiklenirse
       if (isWakingTesla(lowerMsg) || isTeslaMessage(lowerMsg)) {
-        // Tetikleme kelimelerini temizle
         let prompt = msg.message.replace(/^(@tesla|tesla:|tesla)/i, "").trim();
 
         if (!prompt || prompt.length < 3) {
@@ -75,19 +73,27 @@ wss.on("connection", (ws) => {
           return;
         }
 
-        console.log("🧠 GPT prompt:", prompt);
+        console.log("🧠 GPT çağrısı prompt:", prompt);
+
+        // 🔁 Önceki mesajlardan bir konuşma dizisi oluştur
+        const history = roomMessages.get(msg.room) || [];
+        const recent = history
+          .filter(m => m.username === "tesla" || m.username === msg.username)
+          .slice(-6) // Son 6 mesajı al, daha fazlası maliyeti artırır
+          .map(m => ({
+            role: m.username === "tesla" ? "assistant" : "user",
+            content: m.message
+          }));
+
+        recent.unshift({
+          role: "system",
+          content: "You are Tesla, a friendly and intelligent assistant. Continue the conversation naturally, helpfully, and with context awareness."
+        });
 
         try {
           const chatResponse = await openai.chat.completions.create({
             model: "gpt-3.5-turbo",
-            messages: [
-              {
-                role: "system",
-                content:
-                  "You are a helpful assistant that responds naturally in the language of the user's message.",
-              },
-              { role: "user", content: prompt },
-            ],
+            messages: recent
           });
 
           const teslaReply = {
@@ -159,5 +165,5 @@ function isTeslaMessage(text) {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`✅ Tesla destekli Chat sunucusu ${PORT} portunda çalışıyor.`);
+  console.log(`✅ Tesla destekli konuşma hafızalı sunucu ${PORT} portunda çalışıyor.`);
 });
