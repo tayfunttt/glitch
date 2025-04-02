@@ -66,12 +66,13 @@ wss.on('connection', (ws) => {
     }
 
     // Yeni mesaj gönderme
-    if (msg.type === 'message') {
-      const messageObj = {
-        username: msg.username,
-        room: msg.room,
-        message: msg.message
-      };
+ if (msg.type === 'message') {
+  const messageObj = {
+    username: msg.username,
+    room: msg.room,
+    message: msg.message,
+    timestamp: Date.now() // ✅ timestamp eklendi
+  };
 
       if (!roomMessages.has(msg.room)) {
         roomMessages.set(msg.room, []);
