@@ -1,169 +1,127 @@
-﻿const express = require("express");
-const http = require("http");
-const WebSocket = require("ws");
-const dotenv = require("dotenv");
-const OpenAI = require("openai");
+﻿import express from "express";
+import { WebSocketServer } from "ws";
+import { createServer } from "node:http";
+import { readFile } from "node:fs/promises";
+import { createClient } from "redis";
+import { config } from "dotenv";
+import OpenAI from "openai";
 
-dotenv.config();
+config();
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const app = express();
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const server = createServer(app);
+const wss = new WebSocketServer({ server });
 
-const openai = new OpenAI.OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-const users = new Map();
+const messages = new Map();
 const roomMessages = new Map();
 
+const redis = createClient({
+  url: process.env.REDIS_URL || "redis://localhost:6379",
+});
+
+await redis.connect();
+
+const loadMessages = async (room) => {
+  const list = await redis.lRange(room, 0, -1);
+  const parsed = list.map((str) => JSON.parse(str));
+  roomMessages.set(room, parsed);
+};
+
+app.get("/", async (_, res) => {
+  const html = await readFile("./index.html", "utf-8");
+  res.setHeader("content-type", "text/html").send(html);
+});
+
+const broadcast = (room, data) => {
+  messages.forEach((wsRoom, ws) => {
+    if (wsRoom === room && ws.readyState === 1) {
+      ws.send(JSON.stringify(data));
+    }
+  });
+};
+
+const isWakingTesla = (text) => /^(@tesla|tesla:)/i.test(text);
+const isTeslaMessage = (text) => text.toLowerCase().startsWith("tesla ");
+
 wss.on("connection", (ws) => {
-  ws.on("message", async (message) => {
+  ws.on("message", async (msgStr) => {
     let msg;
     try {
-      msg = JSON.parse(message);
-    } catch (e) {
+      msg = JSON.parse(msgStr);
+    } catch {
       return;
     }
 
-    if (msg.type === "join") {
-      ws.username = msg.username;
-      ws.room = msg.room;
-      users.set(ws, { username: msg.username, room: msg.room });
+    if (!msg.room || !msg.username || !msg.message) return;
 
-      if (!roomMessages.has(msg.room)) {
-        roomMessages.set(msg.room, []);
-      }
+    messages.set(ws, msg.room);
 
-      const alreadyExists = Array.from(users.values()).some(
-        (u) => u.username === "tesla" && u.room === msg.room
-      );
-      if (!alreadyExists) {
-        users.set(`bot-${msg.room}`, { username: "tesla", room: msg.room });
-      }
-
-      roomMessages.get(msg.room).forEach((m) =>
-        ws.send(JSON.stringify(m))
-      );
-      updateUserList(msg.room);
+    if (!roomMessages.has(msg.room)) {
+      await loadMessages(msg.room);
     }
 
-    if (msg.type === "message") {
-      const lowerMsg = msg.message.toLowerCase();
+    const lowerMsg = msg.message.toLowerCase();
 
-      const messageObj = {
-        username: msg.username,
-        room: msg.room,
-        message: msg.message,
-        timestamp: Date.now(),
-      };
+    // ✅ Sunucunun kendi GPT çağrısı devre dışı bırakıldı
+    if (isWakingTesla(lowerMsg) || isTeslaMessage(lowerMsg)) {
+      console.log("⏹️ Server GPT cevabı iptal edildi. Client üzerinden çalışıyor.");
+      return;
 
-      if (!roomMessages.has(msg.room)) {
-        roomMessages.set(msg.room, []);
-      }
+      /*
+      // 🧠 Önceki GPT-3.5 cevabı - yorumda kaldı
+      let prompt = msg.message.replace(/^(@tesla|tesla:|tesla)/i, "").trim();
+      if (!prompt || prompt.length < 3) return;
 
-      roomMessages.get(msg.room).push(messageObj);
-      broadcast(msg.room, messageObj);
+      const history = roomMessages.get(msg.room) || [];
+      const recent = history
+        .filter((m) => m.username === "tesla" || m.username === msg.username)
+        .slice(-6)
+        .map((m) => ({
+          role: m.username === "tesla" ? "assistant" : "user",
+          content: m.message,
+        }));
 
-      if (isWakingTesla(lowerMsg) || isTeslaMessage(lowerMsg)) {
-        let prompt = msg.message.replace(/^(@tesla|tesla:|tesla)/i, "").trim();
+      recent.unshift({
+        role: "system",
+        content: "You are Tesla, a helpful assistant who speaks Turkish.",
+      });
 
-        if (!prompt || prompt.length < 3) {
-          console.log("⛔ Boş veya kısa prompt, GPT çağrısı yapılmadı.");
-          return;
-        }
-
-        console.log("🧠 GPT çağrısı prompt:", prompt);
-
-        // 🔁 Önceki mesajlardan bir konuşma dizisi oluştur
-        const history = roomMessages.get(msg.room) || [];
-        const recent = history
-          .filter(m => m.username === "tesla" || m.username === msg.username)
-          .slice(-6) // Son 6 mesajı al, daha fazlası maliyeti artırır
-          .map(m => ({
-            role: m.username === "tesla" ? "assistant" : "user",
-            content: m.message
-          }));
-
-        recent.unshift({
-          role: "system",
-          content: "You are Tesla, a friendly and intelligent assistant. Continue the conversation naturally, helpfully, and with context awareness."
+      try {
+        const response = await openai.chat.completions.create({
+          model: "gpt-3.5-turbo",
+          messages: recent,
         });
 
-        try {
-          const chatResponse = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo",
-            messages: recent
-          });
+        const teslaReply = {
+          username: "tesla",
+          room: msg.room,
+          message: response.choices[0].message.content.trim(),
+          timestamp: Date.now(),
+        };
 
-          const teslaReply = {
-            username: "tesla",
-            room: msg.room,
-            message: chatResponse.choices[0].message.content.trim(),
-            timestamp: Date.now(),
-          };
-
-          roomMessages.get(msg.room).push(teslaReply);
-          broadcast(msg.room, teslaReply);
-        } catch (err) {
-          console.error("OpenAI HATASI:", err.message);
-        }
+        roomMessages.get(msg.room).push(teslaReply);
+        await redis.rPush(msg.room, JSON.stringify(teslaReply));
+        broadcast(msg.room, teslaReply);
+      } catch (err) {
+        console.error("OpenAI error:", err.message);
       }
+      */
     }
 
-    if (msg.type === "deleteOwnMessages") {
-      const filtered = (roomMessages.get(msg.room) || []).filter(
-        (m) => m.username !== msg.username
-      );
-      roomMessages.set(msg.room, filtered);
-      ws.send(JSON.stringify({ type: "cleared", room: msg.room }));
-    }
+    msg.timestamp = Date.now();
+    const history = roomMessages.get(msg.room);
+    history.push(msg);
+    await redis.rPush(msg.room, JSON.stringify(msg));
+    broadcast(msg.room, msg);
   });
 
   ws.on("close", () => {
-    users.delete(ws);
-    if (ws.room) updateUserList(ws.room);
+    messages.delete(ws);
   });
 });
 
-function broadcast(room, data) {
-  wss.clients.forEach((client) => {
-    if (client.readyState === 1 && client.room === room) {
-      client.send(JSON.stringify(data));
-    }
-  });
-}
-
-function updateUserList(room) {
-  const userList = Array.from(users.values())
-    .filter((u) => u.room === room)
-    .map((u) => u.username);
-
-  broadcast(room, { type: "userList", room, users: userList });
-}
-
-function isWakingTesla(text) {
-  const lower = text.toLowerCase();
-  const triggers = [
-    "tesla", "@tesla", "tesla:",
-    "tesla neredesin", "tesla naber", "tesla varmısın",
-    "tesla oradamı", "tesla burda mısın", "tesla cevap ver",
-    "tesla burada mısın", "tesla duydun mu",
-    "тесла", "テスラ", "tesla où es-tu", "tesla bist du da", "tesla estas ahí"
-  ];
-  return triggers.some((trigger) => lower.includes(trigger));
-}
-
-function isTeslaMessage(text) {
-  const lower = text.toLowerCase();
-  return (
-    lower.includes("@tesla") ||
-    lower.includes("tesla:") ||
-    lower.startsWith("tesla ")
-  );
-}
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`✅ Tesla destekli konuşma hafızalı sunucu ${PORT} portunda çalışıyor.`);
+server.listen(process.env.PORT || 3000, () => {
+  console.log("✅ Server ready http://localhost:3000");
 });
