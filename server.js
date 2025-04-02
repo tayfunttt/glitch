@@ -1,7 +1,6 @@
 ﻿import express from "express";
 import { WebSocketServer } from "ws";
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
 
 const app = express();
 const server = createServer(app);
@@ -10,9 +9,9 @@ const wss = new WebSocketServer({ server });
 const messages = new Map();
 const roomMessages = new Map();
 
-app.get("/", async (_, res) => {
-  const html = await readFile("./index.html", "utf-8");
-  res.setHeader("content-type", "text/html").send(html);
+// ❌ index.html sunumu kaldırıldı — frontend parpar.it'te zaten var
+app.get("/", (_, res) => {
+  res.send("✅ Parpar WebSocket sunucusu çalışıyor.");
 });
 
 const broadcast = (room, data) => {
@@ -45,9 +44,9 @@ wss.on("connection", (ws) => {
 
     const lowerMsg = msg.message.toLowerCase();
 
-    // ✅ Server GPT yanıtı vermiyor, client (OpenRouter) çalışıyor
+    // ✅ Sunucu GPT cevabı üretmez, client (OpenRouter) kullanılır
     if (isWakingTesla(lowerMsg) || isTeslaMessage(lowerMsg)) {
-      console.log("⏹️ Server GPT cevabı iptal. Cevap client tarafından gönderilecek.");
+      console.log("⏹️ Server GPT devre dışı, client üzerinden cevaplanıyor.");
       return;
     }
 
