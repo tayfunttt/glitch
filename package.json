@@ -1,17 +1,14 @@
 {
-  "name": "parpar-chat-server",
+  "name": "chatgpt-v4-server",
   "version": "1.0.0",
-  "description": "ChatGPT destekli WebSocket sohbet uygulaması",
-  "main": "server.js",
+  "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.mjs"
   },
-  "author": "SeninAdın",
-  "license": "MIT",
   "dependencies": {
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
-    "openai": "3.2.1",
+    "openai": "^4.18.0",
     "ws": "^8.13.0"
   }
 }

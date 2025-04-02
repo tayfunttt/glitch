@@ -1,17 +1,18 @@
-﻿require('dotenv').config();
-const express = require('express');
-const http = require('http');
-const { WebSocketServer } = require('ws');
-const { Configuration, OpenAIApi } = require('openai');
+﻿import express from 'express';
+import http from 'http';
+import { WebSocketServer } from 'ws';
+import dotenv from 'dotenv';
+import OpenAI from 'openai';
+
+dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-const configuration = new Configuration({
-  apiKey: process.env.OPENAI_API_KEY
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
 });
-const openai = new OpenAIApi(configuration);
 
 const users = {};
 const roomMessages = new Map();
@@ -34,7 +35,6 @@ wss.on('connection', (ws) => {
         roomMessages.set(msg.room, []);
       }
 
-      // ChatGPT kullanıcı olarak odaya eklensin
       const botId = 'bot-' + msg.room;
       const alreadyExists = Object.values(users).some(u => u.username === 'chatgpt' && u.room === msg.room);
       if (!alreadyExists) {
@@ -62,36 +62,31 @@ wss.on('connection', (ws) => {
       roomMessages.get(msg.room).push(messageObj);
       broadcast(msg.room, messageObj);
 
-      // 🔍 DEBUG loglar
-      console.log("🟡 Kullanıcı mesajı:", msg.message);
-      console.log("🔡 lowerMsg:", lowerMsg);
-      console.log("🧠 isWakingGPT:", isWakingGPT(lowerMsg));
-      console.log("🤖 isGPTMessage:", isGPTMessage(lowerMsg));
-
       if (isWakingGPT(lowerMsg) || isGPTMessage(lowerMsg)) {
         const prompt = isWakingGPT(lowerMsg)
           ? "Kısa ve samimi bir şekilde 'buradayım' mesajı ver."
           : msg.message.replace(/^(@chatgpt|chatgpt:)/i, '').trim();
 
         try {
-          const completion = await openai.createCompletion({
-            model: "text-davinci-003",
-            prompt: prompt,
-            max_tokens: 100,
-            temperature: 0.7
+          const chatResponse = await openai.chat.completions.create({
+            model: "gpt-3.5-turbo",
+            messages: [
+              { role: "system", content: "Kısa ve anlaşılır şekilde yanıt ver." },
+              { role: "user", content: prompt }
+            ]
           });
 
           const gptMessage = {
             username: 'chatgpt',
             room: msg.room,
-            message: completion.data.choices[0].text.trim(),
+            message: chatResponse.choices[0].message.content.trim(),
             timestamp: Date.now()
           };
 
           roomMessages.get(msg.room).push(gptMessage);
           broadcast(msg.room, gptMessage);
         } catch (err) {
-          console.error("❌ OpenAI API hatası:", err.message);
+          console.error("OpenAI HATASI:", err.message);
         }
       }
     }
@@ -125,24 +120,19 @@ function updateUserList(room) {
   broadcast(room, { type: 'userList', room, users: userList });
 }
 
-// 🔁 ChatGPT’yi uyandıran varyasyonları yakalayan fonksiyon
 function isWakingGPT(text) {
-  const lower = text.toLowerCase();
   const triggers = [
     "chatgpt oradamı",
     "chatgpt oradamısın",
     "chatgpt orodamısın",
-    "chatgpt neredesin",
     "chatgpt varmısın",
-    "chatgpt burda",
+    "chatgpt neredesin",
     "chatgpt ses ver",
-    "chatgpt orda",
-    "chatgpt burada mısın"
+    "chatgpt burda"
   ];
-  return triggers.some(trigger => lower.includes(trigger));
+  return triggers.some(trigger => text.includes(trigger));
 }
 
-// 🧠 GPT soru yakalama
 function isGPTMessage(text) {
   return (
     text.includes('@chatgpt') ||
@@ -153,5 +143,5 @@ function isGPTMessage(text) {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`✅ ChatGPT destekli sunucu ${PORT} portunda çalışıyor.`);
+  console.log(`✅ ChatGPT (v4) sunucusu ${PORT} portunda çalışıyor.`);
 });
