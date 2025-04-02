@@ -35,23 +35,22 @@ wss.on('connection', (ws) => {
         roomMessages.set(msg.room, []);
       }
 
-      // ChatGPT'yi kullanıcı listesine ekle (her oda için bir kere)
-      const userList = Object.values(users)
-        .filter(u => u.room === msg.room)
-        .map(u => u.username);
-
+      // ChatGPT kullanıcı olarak odaya katılsın (sessiz)
       const botId = 'bot-' + msg.room;
-      const botAlreadyJoined = userList.includes('chatgpt');
-
-      if (!botAlreadyJoined) {
+      const alreadyExists = Object.values(users).some(u => u.username === 'chatgpt' && u.room === msg.room);
+      if (!alreadyExists) {
         users[botId] = { username: 'chatgpt', room: msg.room };
       }
 
+      // Önceki mesajları gönder
       roomMessages.get(msg.room).forEach(m => ws.send(JSON.stringify(m)));
-      updateUserList(ws.room);
+
+      updateUserList(msg.room);
     }
 
     if (msg.type === 'message') {
+      const lowerMsg = msg.message.toLowerCase();
+
       const messageObj = {
         username: msg.username,
         room: msg.room,
@@ -66,18 +65,16 @@ wss.on('connection', (ws) => {
       roomMessages.get(msg.room).push(messageObj);
       broadcast(msg.room, messageObj);
 
-      // 🔁 ChatGPT'yi çağıran özel mesajlar
-      const lowerMsg = msg.message.toLowerCase();
-      if (lowerMsg.includes("chatgpt oradamısın") || isGPTMessage(lowerMsg)) {
-        const prompt = lowerMsg.includes("chatgpt oradamısın")
-          ? "Kısa bir şekilde: Buradayım mesajı ver."
+      if (isWakingGPT(lowerMsg) || isGPTMessage(lowerMsg)) {
+        const prompt = isWakingGPT(lowerMsg)
+          ? "Kısa ve samimi bir şekilde 'buradayım' şeklinde cevap ver."
           : msg.message.replace(/^(@chatgpt|chatgpt:)/i, '').trim();
 
         try {
           const completion = await openai.createCompletion({
             model: "text-davinci-003",
             prompt: prompt,
-            max_tokens: 150,
+            max_tokens: 100,
             temperature: 0.7
           });
 
@@ -125,12 +122,33 @@ function updateUserList(room) {
   broadcast(room, { type: 'userList', room, users: userList });
 }
 
-function isGPTMessage(text) {
+// 🔁 ChatGPT’yi uyandıran varyasyonları yakalayan fonksiyon
+function isWakingGPT(text) {
   const lower = text.toLowerCase();
-  return lower.includes('@chatgpt') || lower.includes('chatgpt:') || lower.startsWith('chatgpt ');
+  const triggers = [
+    "chatgpt oradamı",
+    "chatgpt oradamısın",
+    "chatgpt orodamısın",
+    "chatgpt neredesin",
+    "chatgpt varmısın",
+    "chatgpt burda",
+    "chatgpt duydun mu",
+    "chatgpt ses ver",
+    "chatgpt orda"
+  ];
+  return triggers.some(trigger => lower.includes(trigger));
+}
+
+// 🧠 GPT soru yakalama
+function isGPTMessage(text) {
+  return (
+    text.includes('@chatgpt') ||
+    text.includes('chatgpt:') ||
+    text.startsWith('chatgpt ')
+  );
 }
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`✅ ChatGPT destekli sunucu ${PORT} portunda çalışıyor.`);
+  console.log(`✅ ChatGPT sunucu ${PORT} portunda aktif.`);
 });
