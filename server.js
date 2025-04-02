@@ -35,7 +35,7 @@ wss.on('connection', (ws) => {
         roomMessages.set(msg.room, []);
       }
 
-      // ✅ ChatGPT sadece kullanıcı listesine eklenir (mesaj göndermez)
+      // ChatGPT'yi kullanıcı listesine ekle (her oda için bir kere)
       const userList = Object.values(users)
         .filter(u => u.room === msg.room)
         .map(u => u.username);
@@ -66,8 +66,12 @@ wss.on('connection', (ws) => {
       roomMessages.get(msg.room).push(messageObj);
       broadcast(msg.room, messageObj);
 
-      if (isGPTMessage(msg.message)) {
-        const prompt = msg.message.replace(/^(@chatgpt|chatgpt:)/i, '').trim();
+      // 🔁 ChatGPT'yi çağıran özel mesajlar
+      const lowerMsg = msg.message.toLowerCase();
+      if (lowerMsg.includes("chatgpt oradamısın") || isGPTMessage(lowerMsg)) {
+        const prompt = lowerMsg.includes("chatgpt oradamısın")
+          ? "Kısa bir şekilde: Buradayım mesajı ver."
+          : msg.message.replace(/^(@chatgpt|chatgpt:)/i, '').trim();
 
         try {
           const completion = await openai.createCompletion({
@@ -122,10 +126,11 @@ function updateUserList(room) {
 }
 
 function isGPTMessage(text) {
-  return text.toLowerCase().startsWith('@chatgpt') || text.toLowerCase().startsWith('chatgpt:');
+  const lower = text.toLowerCase();
+  return lower.includes('@chatgpt') || lower.includes('chatgpt:') || lower.startsWith('chatgpt ');
 }
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`✅ ChatGPT sessizce odaya katılıyor, ${PORT} portunda çalışıyor.`);
+  console.log(`✅ ChatGPT destekli sunucu ${PORT} portunda çalışıyor.`);
 });
