@@ -9,9 +9,8 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 const configuration = new Configuration({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.OPENAI_API_KEY
 });
-
 const openai = new OpenAIApi(configuration);
 
 const users = {};

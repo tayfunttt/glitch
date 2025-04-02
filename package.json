@@ -1,7 +1,7 @@
 {
   "name": "parpar-chat-server",
   "version": "1.0.0",
-  "description": "WebSocket ve GPT destekli chat sunucusu",
+  "description": "ChatGPT destekli WebSocket sohbet uygulaması",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -11,7 +11,7 @@
   "dependencies": {
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
-    "openai": "^4.0.0",
+    "openai": "3.2.1",
     "ws": "^8.13.0"
   }
 }
