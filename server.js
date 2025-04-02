@@ -28,23 +28,20 @@ wss.on('connection', (ws) => {
     if (msg.type === 'join') {
       ws.username = msg.username;
       ws.room = msg.room;
-
       users[ws] = { username: msg.username, room: msg.room };
 
       if (!roomMessages.has(msg.room)) {
         roomMessages.set(msg.room, []);
       }
 
-      // ChatGPT kullanıcı olarak odaya katılsın (sessiz)
+      // ChatGPT kullanıcı olarak odaya eklensin
       const botId = 'bot-' + msg.room;
       const alreadyExists = Object.values(users).some(u => u.username === 'chatgpt' && u.room === msg.room);
       if (!alreadyExists) {
         users[botId] = { username: 'chatgpt', room: msg.room };
       }
 
-      // Önceki mesajları gönder
       roomMessages.get(msg.room).forEach(m => ws.send(JSON.stringify(m)));
-
       updateUserList(msg.room);
     }
 
@@ -65,9 +62,15 @@ wss.on('connection', (ws) => {
       roomMessages.get(msg.room).push(messageObj);
       broadcast(msg.room, messageObj);
 
+      // 🔍 DEBUG loglar
+      console.log("🟡 Kullanıcı mesajı:", msg.message);
+      console.log("🔡 lowerMsg:", lowerMsg);
+      console.log("🧠 isWakingGPT:", isWakingGPT(lowerMsg));
+      console.log("🤖 isGPTMessage:", isGPTMessage(lowerMsg));
+
       if (isWakingGPT(lowerMsg) || isGPTMessage(lowerMsg)) {
         const prompt = isWakingGPT(lowerMsg)
-          ? "Kısa ve samimi bir şekilde 'buradayım' şeklinde cevap ver."
+          ? "Kısa ve samimi bir şekilde 'buradayım' mesajı ver."
           : msg.message.replace(/^(@chatgpt|chatgpt:)/i, '').trim();
 
         try {
@@ -88,7 +91,7 @@ wss.on('connection', (ws) => {
           roomMessages.get(msg.room).push(gptMessage);
           broadcast(msg.room, gptMessage);
         } catch (err) {
-          console.error("OpenAI API hatası:", err.message);
+          console.error("❌ OpenAI API hatası:", err.message);
         }
       }
     }
@@ -132,9 +135,9 @@ function isWakingGPT(text) {
     "chatgpt neredesin",
     "chatgpt varmısın",
     "chatgpt burda",
-    "chatgpt duydun mu",
     "chatgpt ses ver",
-    "chatgpt orda"
+    "chatgpt orda",
+    "chatgpt burada mısın"
   ];
   return triggers.some(trigger => lower.includes(trigger));
 }
@@ -150,5 +153,5 @@ function isGPTMessage(text) {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`✅ ChatGPT sunucu ${PORT} portunda aktif.`);
+  console.log(`✅ ChatGPT destekli sunucu ${PORT} portunda çalışıyor.`);
 });
