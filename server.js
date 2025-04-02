@@ -14,7 +14,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-const users = {};
+const users = new Map(); // ✅ Map olarak tanımlandı
 const roomMessages = new Map();
 
 wss.on('connection', (ws) => {
@@ -29,19 +29,22 @@ wss.on('connection', (ws) => {
     if (msg.type === 'join') {
       ws.username = msg.username;
       ws.room = msg.room;
-      users[ws] = { username: msg.username, room: msg.room };
+
+      users.set(ws, { username: msg.username, room: msg.room }); // ✅ Map içine ekle
 
       if (!roomMessages.has(msg.room)) {
         roomMessages.set(msg.room, []);
       }
 
-      const botId = 'bot-' + msg.room;
-      const alreadyExists = Object.values(users).some(u => u.username === 'chatgpt' && u.room === msg.room);
+      // ChatGPT'yi kullanıcı listesine ekle (bir kez)
+      const alreadyExists = Array.from(users.values()).some(
+        (u) => u.username === 'chatgpt' && u.room === msg.room
+      );
       if (!alreadyExists) {
-        users[botId] = { username: 'chatgpt', room: msg.room };
+        users.set(`bot-${msg.room}`, { username: 'chatgpt', room: msg.room });
       }
 
-      roomMessages.get(msg.room).forEach(m => ws.send(JSON.stringify(m)));
+      roomMessages.get(msg.room).forEach((m) => ws.send(JSON.stringify(m)));
       updateUserList(msg.room);
     }
 
@@ -92,20 +95,22 @@ wss.on('connection', (ws) => {
     }
 
     if (msg.type === 'deleteOwnMessages') {
-      const filtered = (roomMessages.get(msg.room) || []).filter(m => m.username !== msg.username);
+      const filtered = (roomMessages.get(msg.room) || []).filter(
+        (m) => m.username !== msg.username
+      );
       roomMessages.set(msg.room, filtered);
       ws.send(JSON.stringify({ type: 'cleared', room: msg.room }));
     }
   });
 
   ws.on('close', () => {
-    delete users[ws];
+    users.delete(ws); // ✅ Map'ten sil
     if (ws.room) updateUserList(ws.room);
   });
 });
 
 function broadcast(room, data) {
-  wss.clients.forEach(client => {
+  wss.clients.forEach((client) => {
     if (client.readyState === 1 && client.room === room) {
       client.send(JSON.stringify(data));
     }
@@ -113,9 +118,9 @@ function broadcast(room, data) {
 }
 
 function updateUserList(room) {
-  const userList = Object.values(users)
-    .filter(u => u.room === room)
-    .map(u => u.username);
+  const userList = Array.from(users.values())
+    .filter((u) => u.room === room)
+    .map((u) => u.username);
 
   broadcast(room, { type: 'userList', room, users: userList });
 }
@@ -130,7 +135,7 @@ function isWakingGPT(text) {
     "chatgpt ses ver",
     "chatgpt burda"
   ];
-  return triggers.some(trigger => text.includes(trigger));
+  return triggers.some((trigger) => text.includes(trigger));
 }
 
 function isGPTMessage(text) {
