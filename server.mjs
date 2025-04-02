@@ -36,6 +36,7 @@ wss.on('connection', (ws) => {
         roomMessages.set(msg.room, []);
       }
 
+      // Tesla (ChatGPT) bot'u odaya ekle
       const alreadyExists = Array.from(users.values()).some(
         (u) => u.username === 'tesla' && u.room === msg.room
       );
@@ -43,6 +44,7 @@ wss.on('connection', (ws) => {
         users.set(`bot-${msg.room}`, { username: 'tesla', room: msg.room });
       }
 
+      // Geçmiş mesajları gönder
       roomMessages.get(msg.room).forEach((m) => ws.send(JSON.stringify(m)));
       updateUserList(msg.room);
     }
@@ -66,7 +68,7 @@ wss.on('connection', (ws) => {
 
       if (isWakingTesla(lowerMsg) || isTeslaMessage(lowerMsg)) {
         const prompt = isWakingTesla(lowerMsg)
-          ? "Salve! Quid agis?" // Latince "Merhaba, nasılsın?"
+          ? "Salve! Quid agis?" // Latince: Merhaba, nasılsın?
           : msg.message.replace(/^(@tesla|tesla:)/i, '').trim();
 
         try {
@@ -127,18 +129,14 @@ function updateUserList(room) {
 function isWakingTesla(text) {
   const lower = text.toLowerCase();
   const triggers = [
-    "tesla",
-    "@tesla",
-    "tesla oradamı",
-    "tesla neredesin",
-    "tesla varmısın",
-    "tesla nerdesin",
-    "тесла",                // Rusça
-    "テスラ",               // Japonca
-    "tesla où es-tu",      // Fransızca
-    "tesla bist du da",    // Almanca
-    "tesla estas ahí",     // İspanyolca
-    "tesla buraday mısın"  // Türkçe yanlışları dahil
+    "tesla", "@tesla", "tesla: ",
+    "tesla oradamı", "tesla neredesin", "tesla varmısın",
+    "tesla naber", "tesla selam", "tesla duydun mu",
+    "тесла",               // Rusça
+    "テスラ",              // Japonca
+    "tesla où es-tu",     // Fransızca
+    "tesla bist du da",   // Almanca
+    "tesla estas ahí"     // İspanyolca
   ];
   return triggers.some(trigger => lower.includes(trigger));
 }
