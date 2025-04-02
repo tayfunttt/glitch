@@ -1,7 +1,7 @@
 {
   "name": "chatgpt-v4-server",
   "version": "1.0.0",
-  "type": "module",
+ 
   "scripts": {
     "start": "node server.mjs"
   },
