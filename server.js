@@ -28,10 +28,23 @@ wss.on('connection', (ws) => {
     if (msg.type === 'join') {
       ws.username = msg.username;
       ws.room = msg.room;
+
       users[ws] = { username: msg.username, room: msg.room };
 
       if (!roomMessages.has(msg.room)) {
         roomMessages.set(msg.room, []);
+      }
+
+      // ✅ ChatGPT sadece kullanıcı listesine eklenir (mesaj göndermez)
+      const userList = Object.values(users)
+        .filter(u => u.room === msg.room)
+        .map(u => u.username);
+
+      const botId = 'bot-' + msg.room;
+      const botAlreadyJoined = userList.includes('chatgpt');
+
+      if (!botAlreadyJoined) {
+        users[botId] = { username: 'chatgpt', room: msg.room };
       }
 
       roomMessages.get(msg.room).forEach(m => ws.send(JSON.stringify(m)));
@@ -114,5 +127,5 @@ function isGPTMessage(text) {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`✅ GPT destekli sunucu ${PORT} portunda çalışıyor.`);
+  console.log(`✅ ChatGPT sessizce odaya katılıyor, ${PORT} portunda çalışıyor.`);
 });
