@@ -65,10 +65,17 @@ wss.on("connection", (ws) => {
       roomMessages.get(msg.room).push(messageObj);
       broadcast(msg.room, messageObj);
 
+      // GPT tetiklenirse
       if (isWakingTesla(lowerMsg) || isTeslaMessage(lowerMsg)) {
-        const prompt = isWakingTesla(lowerMsg)
-          ? "Merhaba Tesla! Burada mısın?"
-          : msg.message.replace(/^(@tesla|tesla:)/i, "").trim();
+        // Tetikleme kelimelerini temizle
+        let prompt = msg.message.replace(/^(@tesla|tesla:|tesla)/i, "").trim();
+
+        if (!prompt || prompt.length < 3) {
+          console.log("⛔ Boş veya kısa prompt, GPT çağrısı yapılmadı.");
+          return;
+        }
+
+        console.log("🧠 GPT prompt:", prompt);
 
         try {
           const chatResponse = await openai.chat.completions.create({
@@ -77,7 +84,7 @@ wss.on("connection", (ws) => {
               {
                 role: "system",
                 content:
-                  "You are a helpful assistant that responds naturally in the language of the user’s message.",
+                  "You are a helpful assistant that responds naturally in the language of the user's message.",
               },
               { role: "user", content: prompt },
             ],
