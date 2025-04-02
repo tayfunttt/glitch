@@ -1,24 +1,24 @@
-﻿import express from 'express';
-import http from 'http';
-import { WebSocketServer } from 'ws';
-import dotenv from 'dotenv';
-import OpenAI from 'openai';
+﻿const express = require("express");
+const http = require("http");
+const WebSocket = require("ws");
+const dotenv = require("dotenv");
+const OpenAI = require("openai");
 
 dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+const wss = new WebSocket.Server({ server });
 
-const openai = new OpenAI({
+const openai = new OpenAI.OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-const users = new Map(); // ✅ Map olarak tanımlandı
+const users = new Map();
 const roomMessages = new Map();
 
-wss.on('connection', (ws) => {
-  ws.on('message', async (message) => {
+wss.on("connection", (ws) => {
+  ws.on("message", async (message) => {
     let msg;
     try {
       msg = JSON.parse(message);
@@ -26,36 +26,36 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    if (msg.type === 'join') {
+    if (msg.type === "join") {
       ws.username = msg.username;
       ws.room = msg.room;
-
-      users.set(ws, { username: msg.username, room: msg.room }); // ✅ Map içine ekle
+      users.set(ws, { username: msg.username, room: msg.room });
 
       if (!roomMessages.has(msg.room)) {
         roomMessages.set(msg.room, []);
       }
 
-      // ChatGPT'yi kullanıcı listesine ekle (bir kez)
       const alreadyExists = Array.from(users.values()).some(
-        (u) => u.username === 'chatgpt' && u.room === msg.room
+        (u) => u.username === "tesla" && u.room === msg.room
       );
       if (!alreadyExists) {
-        users.set(`bot-${msg.room}`, { username: 'chatgpt', room: msg.room });
+        users.set(`bot-${msg.room}`, { username: "tesla", room: msg.room });
       }
 
-      roomMessages.get(msg.room).forEach((m) => ws.send(JSON.stringify(m)));
+      roomMessages.get(msg.room).forEach((m) =>
+        ws.send(JSON.stringify(m))
+      );
       updateUserList(msg.room);
     }
 
-    if (msg.type === 'message') {
+    if (msg.type === "message") {
       const lowerMsg = msg.message.toLowerCase();
 
       const messageObj = {
         username: msg.username,
         room: msg.room,
         message: msg.message,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       if (!roomMessages.has(msg.room)) {
@@ -65,46 +65,50 @@ wss.on('connection', (ws) => {
       roomMessages.get(msg.room).push(messageObj);
       broadcast(msg.room, messageObj);
 
-      if (isWakingGPT(lowerMsg) || isGPTMessage(lowerMsg)) {
-        const prompt = isWakingGPT(lowerMsg)
-          ? "Kısa ve samimi bir şekilde 'buradayım' mesajı ver."
-          : msg.message.replace(/^(@chatgpt|chatgpt:)/i, '').trim();
+      if (isWakingTesla(lowerMsg) || isTeslaMessage(lowerMsg)) {
+        const prompt = isWakingTesla(lowerMsg)
+          ? "Salve! Quid agis?"
+          : msg.message.replace(/^(@tesla|tesla:)/i, "").trim();
 
         try {
           const chatResponse = await openai.chat.completions.create({
             model: "gpt-3.5-turbo",
             messages: [
-              { role: "system", content: "Kısa ve anlaşılır şekilde yanıt ver." },
-              { role: "user", content: prompt }
-            ]
+              {
+                role: "system",
+                content:
+                  "Responde semper Latine. Sint responsa brevia et clara.",
+              },
+              { role: "user", content: prompt },
+            ],
           });
 
-          const gptMessage = {
-            username: 'chatgpt',
+          const teslaReply = {
+            username: "tesla",
             room: msg.room,
             message: chatResponse.choices[0].message.content.trim(),
-            timestamp: Date.now()
+            timestamp: Date.now(),
           };
 
-          roomMessages.get(msg.room).push(gptMessage);
-          broadcast(msg.room, gptMessage);
+          roomMessages.get(msg.room).push(teslaReply);
+          broadcast(msg.room, teslaReply);
         } catch (err) {
           console.error("OpenAI HATASI:", err.message);
         }
       }
     }
 
-    if (msg.type === 'deleteOwnMessages') {
+    if (msg.type === "deleteOwnMessages") {
       const filtered = (roomMessages.get(msg.room) || []).filter(
         (m) => m.username !== msg.username
       );
       roomMessages.set(msg.room, filtered);
-      ws.send(JSON.stringify({ type: 'cleared', room: msg.room }));
+      ws.send(JSON.stringify({ type: "cleared", room: msg.room }));
     }
   });
 
-  ws.on('close', () => {
-    users.delete(ws); // ✅ Map'ten sil
+  ws.on("close", () => {
+    users.delete(ws);
     if (ws.room) updateUserList(ws.room);
   });
 });
@@ -122,31 +126,30 @@ function updateUserList(room) {
     .filter((u) => u.room === room)
     .map((u) => u.username);
 
-  broadcast(room, { type: 'userList', room, users: userList });
+  broadcast(room, { type: "userList", room, users: userList });
 }
 
-function isWakingGPT(text) {
+function isWakingTesla(text) {
+  const lower = text.toLowerCase();
   const triggers = [
-    "chatgpt oradamı",
-    "chatgpt oradamısın",
-    "chatgpt orodamısın",
-    "chatgpt varmısın",
-    "chatgpt neredesin",
-    "chatgpt ses ver",
-    "chatgpt burda"
+    "tesla", "@tesla", "tesla:",
+    "tesla neredesin", "tesla naber", "tesla varmısın", "tesla oradamı",
+    "tesla burda mısın", "tesla cevap ver", "tesla selam",
+    "тесла", "テスラ", "tesla où es-tu", "tesla bist du da", "tesla estas ahí"
   ];
-  return triggers.some((trigger) => text.includes(trigger));
+  return triggers.some((trigger) => lower.includes(trigger));
 }
 
-function isGPTMessage(text) {
+function isTeslaMessage(text) {
+  const lower = text.toLowerCase();
   return (
-    text.includes('@chatgpt') ||
-    text.includes('chatgpt:') ||
-    text.startsWith('chatgpt ')
+    lower.includes("@tesla") ||
+    lower.includes("tesla:") ||
+    lower.startsWith("tesla ")
   );
 }
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`✅ ChatGPT (v4) sunucusu ${PORT} portunda çalışıyor.`);
+  console.log(`✅ Tesla destekli Chat sunucusu ${PORT} portunda çalışıyor.`);
 });
