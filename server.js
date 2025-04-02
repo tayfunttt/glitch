@@ -1,133 +1,79 @@
-﻿const http = require('http');
-const WebSocket = require('ws');
+﻿const express = require('express');
+const http = require('http');
+const { WebSocketServer } = require('ws');
 
-const clients = new Set();
-const roomMessages = new Map(); // { oda: [mesaj1, mesaj2, ...] }
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server });
 
-const server = http.createServer((req, res) => {
-  res.writeHead(200);
-  res.end("WebSocket sunucusu çalışıyor.");
-});
-
-const wss = new WebSocket.Server({ server });
-
-function broadcastUserList(room) {
-  const userList = [];
-
-  clients.forEach(ws => {
-    if (ws.readyState !== WebSocket.OPEN) {
-      clients.delete(ws);
-      return;
-    }
-
-    if (ws.userData.room === room) {
-      userList.push(ws.userData.username);
-    }
-  });
-
-  const message = JSON.stringify({
-    type: 'userList',
-    users: userList,
-    room
-  });
-
-  clients.forEach(ws => {
-    if (ws.readyState === WebSocket.OPEN && ws.userData.room === room) {
-      ws.send(message);
-    }
-  });
-}
+const users = {};
+const roomMessages = new Map();
 
 wss.on('connection', (ws) => {
-  ws.userData = { username: null, room: null };
-  clients.add(ws);
-
-  ws.on('message', (data) => {
+  ws.on('message', (message) => {
     let msg;
     try {
-      msg = JSON.parse(data);
-    } catch {
+      msg = JSON.parse(message);
+    } catch (e) {
       return;
     }
 
-    // Odaya katılma
     if (msg.type === 'join') {
-      ws.userData.username = msg.username;
-      ws.userData.room = msg.room;
+      ws.username = msg.username;
+      ws.room = msg.room;
 
-      // Eski mesajları gönder
-      const history = roomMessages.get(msg.room) || [];
-      history.forEach(m => {
-        ws.send(JSON.stringify(m));
-      });
+      if (!roomMessages.has(msg.room)) roomMessages.set(msg.room, []);
+      users[ws] = { username: msg.username, room: msg.room };
 
-      broadcastUserList(msg.room);
-      return;
+      // Önceki mesajları gönder
+      roomMessages.get(msg.room).forEach(m => ws.send(JSON.stringify(m)));
+
+      // Kullanıcı listesini yayınla
+      const userList = Object.values(users)
+        .filter(u => u.room === msg.room)
+        .map(u => u.username);
+      broadcast(msg.room, { type: 'userList', room: msg.room, users: userList });
     }
 
-    // Yeni mesaj gönderme
- if (msg.type === 'message') {
-  const messageObj = {
-    username: msg.username,
-    room: msg.room,
-    message: msg.message,
-    timestamp: Date.now() // ✅ timestamp eklendi
-  };
-
-      if (!roomMessages.has(msg.room)) {
-        roomMessages.set(msg.room, []);
-      }
+    if (msg.type === 'message') {
+      const messageObj = {
+        username: msg.username,
+        room: msg.room,
+        message: msg.message,
+        timestamp: Date.now()
+      };
+      if (!roomMessages.has(msg.room)) roomMessages.set(msg.room, []);
       roomMessages.get(msg.room).push(messageObj);
-
-      clients.forEach(client => {
-        if (
-          client.readyState === WebSocket.OPEN &&
-          client.userData.room === msg.room
-        ) {
-          client.send(JSON.stringify(messageObj));
-        }
-      });
-      return;
+      broadcast(msg.room, messageObj);
     }
 
-    // Sadece kendi mesajlarını silme
     if (msg.type === 'deleteOwnMessages') {
-      const room = msg.room;
-      const username = msg.username;
-
-      if (roomMessages.has(room)) {
-        const filtered = roomMessages.get(room).filter(m => m.username !== username);
-        roomMessages.set(room, filtered);
-      }
-
-      // Tüm kullanıcılara önce temizleme bildirimi
-      clients.forEach(client => {
-        if (
-          client.readyState === WebSocket.OPEN &&
-          client.userData.room === room
-        ) {
-          client.send(JSON.stringify({ type: 'cleared', room }));
-
-          // Güncel mesajları yeniden gönder
-          roomMessages.get(room).forEach(m => {
-            client.send(JSON.stringify(m));
-          });
-        }
-      });
-
-      return;
+      const msgs = roomMessages.get(msg.room) || [];
+      roomMessages.set(msg.room, msgs.filter(m => m.username !== msg.username));
+      ws.send(JSON.stringify({ type: 'cleared', room: msg.room }));
     }
   });
 
   ws.on('close', () => {
-    clients.delete(ws);
-    if (ws.userData.room) {
-      broadcastUserList(ws.userData.room);
+    delete users[ws];
+    if (ws.room) {
+      const userList = Object.values(users)
+        .filter(u => u.room === ws.room)
+        .map(u => u.username);
+      broadcast(ws.room, { type: 'userList', room: ws.room, users: userList });
     }
   });
 });
 
+function broadcast(room, data) {
+  wss.clients.forEach(client => {
+    if (client.readyState === 1 && users[client]?.room === room) {
+      client.send(JSON.stringify(data));
+    }
+  });
+}
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`WebSocket sunucusu ${PORT} portunda çalışıyor`);
+  console.log(`Sunucu ${PORT} portunda çalışıyor`);
 });
