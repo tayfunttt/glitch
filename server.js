@@ -1,5 +1,4 @@
-﻿require('dotenv').config(); // .env dosyasından API anahtarı okunur
-
+﻿require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const { WebSocketServer } = require('ws');
@@ -9,10 +8,9 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-const configuration = new Configuration({
-  apiKey: process.env.OPENAI_API_KEY,
+const openai = new OpenAIApi({
+  apiKey: process.env.OPENAI_API_KEY
 });
-const openai = new OpenAIApi(configuration);
 
 const users = {};
 const roomMessages = new Map();
@@ -56,33 +54,28 @@ wss.on('connection', (ws) => {
       roomMessages.get(msg.room).push(messageObj);
       broadcast(msg.room, messageObj);
 
-      // @chatgpt mesajı ise GPT'den cevap al
       if (isGPTMessage(msg.message)) {
-        const cleanPrompt = msg.message.replace(/^(@chatgpt|chatgpt:)/i, '').trim();
+        const prompt = msg.message.replace(/^(@chatgpt|chatgpt:)/i, '').trim();
 
         try {
-          const response = await openai.createChatCompletion({
-            model: "gpt-4",
-            messages: [
-              { role: "system", content: "Kısa ve açıklayıcı cevap ver." },
-              { role: "user", content: cleanPrompt }
-            ],
+          const completion = await openai.createCompletion({
+            model: "text-davinci-003",
+            prompt: prompt,
+            max_tokens: 200,
             temperature: 0.7
           });
 
-          const gptReply = response.data.choices[0].message.content;
-
           const gptMessage = {
-            username: 'chatgpt',
+            username: "chatgpt",
             room: msg.room,
-            message: gptReply,
+            message: completion.data.choices[0].text.trim(),
             timestamp: Date.now()
           };
 
           roomMessages.get(msg.room).push(gptMessage);
           broadcast(msg.room, gptMessage);
         } catch (err) {
-          console.error("GPT API Hatası:", err.message);
+          console.error("OpenAI Hatası:", err.message);
         }
       }
     }
