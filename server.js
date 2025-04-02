@@ -8,9 +8,11 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-const openai = new OpenAIApi({
-  apiKey: process.env.OPENAI_API_KEY
+const configuration = new Configuration({
+  apiKey: process.env.OPENAI_API_KEY,
 });
+
+const openai = new OpenAIApi(configuration);
 
 const users = {};
 const roomMessages = new Map();
@@ -27,16 +29,13 @@ wss.on('connection', (ws) => {
     if (msg.type === 'join') {
       ws.username = msg.username;
       ws.room = msg.room;
-
       users[ws] = { username: msg.username, room: msg.room };
 
       if (!roomMessages.has(msg.room)) {
         roomMessages.set(msg.room, []);
       }
 
-      const previousMessages = roomMessages.get(msg.room);
-      previousMessages.forEach(m => ws.send(JSON.stringify(m)));
-
+      roomMessages.get(msg.room).forEach(m => ws.send(JSON.stringify(m)));
       updateUserList(ws.room);
     }
 
@@ -51,6 +50,7 @@ wss.on('connection', (ws) => {
       if (!roomMessages.has(msg.room)) {
         roomMessages.set(msg.room, []);
       }
+
       roomMessages.get(msg.room).push(messageObj);
       broadcast(msg.room, messageObj);
 
@@ -61,12 +61,12 @@ wss.on('connection', (ws) => {
           const completion = await openai.createCompletion({
             model: "text-davinci-003",
             prompt: prompt,
-            max_tokens: 200,
+            max_tokens: 150,
             temperature: 0.7
           });
 
           const gptMessage = {
-            username: "chatgpt",
+            username: 'chatgpt',
             room: msg.room,
             message: completion.data.choices[0].text.trim(),
             timestamp: Date.now()
@@ -75,14 +75,13 @@ wss.on('connection', (ws) => {
           roomMessages.get(msg.room).push(gptMessage);
           broadcast(msg.room, gptMessage);
         } catch (err) {
-          console.error("OpenAI Hatası:", err.message);
+          console.error("OpenAI API hatası:", err.message);
         }
       }
     }
 
     if (msg.type === 'deleteOwnMessages') {
-      const all = roomMessages.get(msg.room) || [];
-      const filtered = all.filter(m => m.username !== msg.username);
+      const filtered = (roomMessages.get(msg.room) || []).filter(m => m.username !== msg.username);
       roomMessages.set(msg.room, filtered);
       ws.send(JSON.stringify({ type: 'cleared', room: msg.room }));
     }
@@ -107,11 +106,7 @@ function updateUserList(room) {
     .filter(u => u.room === room)
     .map(u => u.username);
 
-  broadcast(room, {
-    type: 'userList',
-    room,
-    users: userList
-  });
+  broadcast(room, { type: 'userList', room, users: userList });
 }
 
 function isGPTMessage(text) {
