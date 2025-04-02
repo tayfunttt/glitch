@@ -67,7 +67,7 @@ wss.on("connection", (ws) => {
 
       if (isWakingTesla(lowerMsg) || isTeslaMessage(lowerMsg)) {
         const prompt = isWakingTesla(lowerMsg)
-          ? "Salve! Quid agis?"
+          ? "Merhaba Tesla! Burada mısın?"
           : msg.message.replace(/^(@tesla|tesla:)/i, "").trim();
 
         try {
@@ -77,7 +77,7 @@ wss.on("connection", (ws) => {
               {
                 role: "system",
                 content:
-                  "Responde semper Latine. Sint responsa brevia et clara.",
+                  "You are a helpful assistant that responds naturally in the language of the user’s message.",
               },
               { role: "user", content: prompt },
             ],
@@ -133,8 +133,9 @@ function isWakingTesla(text) {
   const lower = text.toLowerCase();
   const triggers = [
     "tesla", "@tesla", "tesla:",
-    "tesla neredesin", "tesla naber", "tesla varmısın", "tesla oradamı",
-    "tesla burda mısın", "tesla cevap ver", "tesla selam",
+    "tesla neredesin", "tesla naber", "tesla varmısın",
+    "tesla oradamı", "tesla burda mısın", "tesla cevap ver",
+    "tesla burada mısın", "tesla duydun mu",
     "тесла", "テスラ", "tesla où es-tu", "tesla bist du da", "tesla estas ahí"
   ];
   return triggers.some((trigger) => lower.includes(trigger));
