@@ -1,10 +1,14 @@
-const express = require("express");
-const bodyParser = require("body-parser");
-const webpush = require("web-push");
+import express from "express";
+import bodyParser from "body-parser";
+import webpush from "web-push";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const app = express();
 app.use(bodyParser.json());
 
+// VAPID ayarları
 webpush.setVapidDetails(
   "mailto:you@parpar.it",
   process.env.VAPID_PUBLIC,
@@ -13,12 +17,14 @@ webpush.setVapidDetails(
 
 const subscriptions = {};
 
+// Abonelik kaydet
 app.post("/api/register", (req, res) => {
   const { phone, subscription } = req.body;
   subscriptions[phone] = subscription;
   res.json({ ok: true });
 });
 
+// Bildirim gönder
 app.post("/api/send", async (req, res) => {
   const { toPhone, fromPhone, message } = req.body;
   const sub = subscriptions[toPhone];
@@ -41,4 +47,4 @@ app.post("/api/send", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Push server running on :" + PORT));
+app.listen(PORT, () => console.log("Server running on port", PORT));
