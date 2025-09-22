@@ -1,68 +1,44 @@
-﻿import express from "express";
-import { WebSocketServer } from "ws";
-import { createServer } from "node:http";
+const express = require("express");
+const bodyParser = require("body-parser");
+const webpush = require("web-push");
 
 const app = express();
-const server = createServer(app);
-const wss = new WebSocketServer({ server });
+app.use(bodyParser.json());
 
-const messages = new Map();
-const roomMessages = new Map();
+webpush.setVapidDetails(
+  "mailto:you@parpar.it",
+  process.env.VAPID_PUBLIC,
+  process.env.VAPID_PRIVATE
+);
 
-// ❌ index.html sunumu kaldırıldı — frontend parpar.it'te zaten var
-app.get("/", (_, res) => {
-  res.send("✅ Parpar WebSocket sunucusu çalışıyor.");
+const subscriptions = {};
+
+app.post("/api/register", (req, res) => {
+  const { phone, subscription } = req.body;
+  subscriptions[phone] = subscription;
+  res.json({ ok: true });
 });
 
-const broadcast = (room, data) => {
-  messages.forEach((wsRoom, ws) => {
-    if (wsRoom === room && ws.readyState === 1) {
-      ws.send(JSON.stringify(data));
-    }
-  });
-};
+app.post("/api/send", async (req, res) => {
+  const { toPhone, fromPhone, message } = req.body;
+  const sub = subscriptions[toPhone];
+  if (!sub) return res.status(404).json({ error: "No subscription" });
 
-const isWakingTesla = (text) => /^(@tesla|tesla:)/i.test(text);
-const isTeslaMessage = (text) => text.toLowerCase().startsWith("tesla ");
-
-wss.on("connection", (ws) => {
-  ws.on("message", async (msgStr) => {
-    let msg;
-    try {
-      msg = JSON.parse(msgStr);
-    } catch {
-      return;
-    }
-
-    if (!msg.room || !msg.username || !msg.message) return;
-
-    messages.set(ws, msg.room);
-
-    if (!roomMessages.has(msg.room)) {
-      roomMessages.set(msg.room, []);
-    }
-
-    const lowerMsg = msg.message.toLowerCase();
-
-    // ✅ Sunucu GPT cevabı üretmez, client (OpenRouter) kullanılır
-    if (isWakingTesla(lowerMsg) || isTeslaMessage(lowerMsg)) {
-      console.log("⏹️ Server GPT devre dışı, client üzerinden cevaplanıyor.");
-      return;
-    }
-
-    msg.timestamp = Date.now();
-
-    const history = roomMessages.get(msg.room);
-    history.push(msg);
-
-    broadcast(msg.room, msg);
-  });
-
-  ws.on("close", () => {
-    messages.delete(ws);
-  });
+  try {
+    await webpush.sendNotification(
+      sub,
+      JSON.stringify({
+        title: "Yeni mesaj",
+        body: `${fromPhone}: ${message}`,
+        fromPhone,
+      })
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Push failed" });
+  }
 });
 
-server.listen(process.env.PORT || 3000, () => {
-  console.log("✅ Server ready http://localhost:3000");
-});
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log("Push server running on :" + PORT));
