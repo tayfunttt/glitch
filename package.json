@@ -1,7 +1,6 @@
 {
   "name": "parpar-chat-server",
   "version": "1.0.0",
-
   "scripts": {
     "start": "node server.js"
   },
@@ -9,7 +8,7 @@
     "axios": "^1.8.4",
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
-    "ws": "^8.13.0"
+    "ws": "^8.13.0",
+    "web-push": "^3.6.7"
   }
 }
-
